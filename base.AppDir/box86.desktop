@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=box86
+Exec=box86 %U
+Terminal=false
+Type=Application
+Icon=box86
+StartupWMClass=box86
+X-AppImage-Version=0.1.0
+Comment=Linux Userspace x86 Emulator with a twist, targeted at ARM Linux devices.
+Categories=Utility;
