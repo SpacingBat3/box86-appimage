@@ -3,9 +3,7 @@ A group of the bash scripts used to package the [`box86`](https://github.com/pti
 
 ## 1. Usage
 ```
-git clone https://github.com/SpacingBat3/box86-appimage
-cd box86-appimage
-./build.sh
+git clone https://github.com/SpacingBat3/box86-appimage && box86-appimage/package
 ```
 
 ## 2. Todo:
@@ -18,7 +16,7 @@ cd box86-appimage
 - [X] Building the chroot using the existing chroot directory.
     - [X] Selectively copy the libraries from the chroot.
 - [ ] Building using the toolchain (on any host architecture).
-- [ ] Create the chroot enviroment from scratch on Arch-based Linux distributions and use it to build `box86`.
+- [X] Create the new chroot enviroment on Arch-based Linux distributions and use it to build `box86`.
 
 ## 3. License:
-This project is redistributed under the conditions of the GNU GPL License (version 3 and later).
+This project is redistributed under the conditions of the GNU GPL License (version 3 or later).

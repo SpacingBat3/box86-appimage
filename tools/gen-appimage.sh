@@ -17,7 +17,7 @@
 #  GNU General Public License for more details.
 #  
 #  You should have received a copy of the GNU General Public License
-#  along with this program.  If not, see <http://www.gnu.org/licenses/>
+#  along with this program. If not, see <http://www.gnu.org/licenses/>
 #
 
 # Functions:
@@ -36,6 +36,7 @@ error() {
         3) echo "Couldn't generate the SQUASHFS image!" ;;
         4) echo "Couldn't generate final AppImage!" ;;
         5) echo "Canceled by user!" ;;
+        6) echo "Invalid command syntax!"; help;;
         *) [[ "$error" == 0 || -z "$error" ]] && echo "Unknown error!";;
     esac
     printf "Exit code ${1}!"
@@ -55,8 +56,33 @@ repo_ver() { # https://gist.github.com/lukechilds/a83e1d7127b78fef38c2914c4ececc
     grep '"tag_name":' |
     sed -E 's/.*"([^"]+)".*/\1/'
 }
+version(){
+    echo -e "${NAME}, version ${VER}"
+    [[ ! -z "${REPO_TAG}" ]] && echo -e "Current AppImage runtime version: ${REPO_TAG}\n"
+    echo -e "Copyright (C) ${CP_YEAR} SpacingBat3\n"
+    echo "This program comes with ABSOLUTELY NO WARRANTY."
+    echo "This is free software, and you are welcome to redistribute it"
+    echo -e "under certain conditions."
+}
+help(){
+    echo "USAGE: `basename $0` [APPDIR] [APPIMAGE] [SQUASHFS-FLAGS/PRESET]"
+    echo -e "\nARGUMENTS:"
+    echo " -h   --help                          Display this help message."
+    echo " -v   --version                       Display information about the"
+    echo "                                      application version."
+}
 
-# Recognize the "$@":
+# Variables:
+NAME="gen-appimage"
+VER="0.1.1"
+[[ "$(date +%Y)" == "2021" ]] && CP_YEAR="2021" || CP_YEAR="2021-$(date %Y)"
+REPO="AppImage/AppImageKit"
+REPO_TAG="$(repo_ver $REPO)"
+tmp="/tmp"
+tmpext="part"
+tmpname="`basename "${2}" .AppImage`"
+
+# Parse the arguments:
 if [[ -z $3 ]]; then
     flags=("-b" "1048576" "-comp" "xz" "-Xdict-size" "100%")
 elif [[ "$3" =~ "quick" ]]; then
@@ -64,15 +90,16 @@ elif [[ "$3" =~ "quick" ]]; then
 else
     flags=("${@:3}")
 fi
-if [[ ! -d $1 ]] || [[ -z $2 ]]; then
-    echo "USAGE: `basename $0` [APPDIR] [APPIMAGE]"
-    exit 0
+if [[ ! -d $1 ]]; then
+    case "$@" in
+        *"--help"*|*'-'*'h'*) help; exit 0 ;;
+        *"--version"*|*'-'*'v'*) version; exit 0 ;;
+        *) error 6 ;;
+    esac
 fi
-
-# Variables:
-tmp="/tmp"
-tmpext="part"
-tmpname="`basename "${2}" .AppImage`"
+if [[ -z $2 ]]; then
+    error 6
+fi
 
 # Detect AppImage architecture and  check it's compatibility:
 SUPPORTED_ARCH=("aarch64" "armhf" "x86_64" "i386")
@@ -87,8 +114,6 @@ for cur_a in "${SUPPORTED_ARCH[@]}"; do
     [[ "$error" == 0 ]] && break
 done
 [[ "$error" == 0 ]] || error 1
-REPO="AppImage/AppImageKit"
-REPO_TAG="$(repo_ver $REPO)"
 
 # Code:
 printf "Generating \".DirIcon\"..."
