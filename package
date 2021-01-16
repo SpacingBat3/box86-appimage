@@ -51,6 +51,7 @@ help_dc2(){
 }
 
 # Functions:
+
 get_ver(){
     printf "r%s.%s" "$(git -C "${HERE}" rev-list --count HEAD)" "$(git -C "${HERE}" rev-parse --short HEAD)"
 }
@@ -65,7 +66,7 @@ version(){
 
 chroot(){
     sudo -p "[chroot] Enter your password: " "${HERE}/tools/chroot.sh" \
-    "${CHROOT_DIR}" "${HERE}/src/box86" "${UID}" "${USER}" "$@"
+    "${CHROOT_DIR}" "${HERE}/tmp/src" "${UID}" "${USER}" "$@"
 }
 
 help(){
@@ -81,10 +82,12 @@ help(){
     help_nx "host."
     help_dc2 "CP_LIB_MODE" "[0-${x}]" "Sets the mode of filtering libraries."
     help_dc2 "RESET" "[STEP]" "Restart the build from this STEP."
-    echo
-    echo "You can also prefix the variable name with the \"BOX86_APPIMAGE_\" if you want"
+    help_dc2 "VER" "[TAG/BRANCH]" "Tag or branch of the box86 repo"
+    help_nx "which will be used to download the other"
+    help_nx "version of the BOX86 (than master)."
+    echo -e "\nYou can also prefix the variable name with the \"BOX86_APPIMAGE_\" if you want"
     echo "to save it as an enviroment variable and you are aware the regural variable"
-    echo "names will be in conflict with variables used by the other software." 
+    echo "names will be in conflict with variables used by the other software."
     help_tl "PLATFORMS:"
     printf -v PLATFORM_ALL '%s, ' "${PLATFORM_LIST[@]}"
     echo -e " \e[1;92m✓\e[0m ${PLATFORM_ALL%, }"
@@ -111,7 +114,8 @@ usage(){
     help_tl "ARGUMENTS:"
     help_dc " -h   --help" "Display entire help message."
     help_dc " -u   --usage" "Display script usage."
-    help_dc " -c   --clear" "Clear build files to free some disk space."
+    help_dc " -c   --clear" "Clear build files to free some disk"
+    help_nx "space."
 }
 
 error(){
@@ -149,9 +153,9 @@ workdirs(){
     ;;&
     *)
         printf "\nPreparing the script's work directory..."
-        [[ ! -d "${HERE}/src" ]] && mkdir "${HERE}/src"
-        [[ -f "${HERE}/src/box86/build/CMakeCache.txt" ]] && rm -f "${HERE}/box86/build/CMakeCache.txt"
-        [[ -d "${HERE}/final.AppDir" ]] && rm -Rf "${HERE}/final.AppDir" >/dev/null 2>&1
+        [[ ! -d "${HERE}/tmp/src" ]] && mkdir "${HERE}/tmp/src"
+        [[ -f "${HERE}/tmp/src/box86/build/CMakeCache.txt" ]] && rm -f "${HERE}/box86/build/CMakeCache.txt"
+        [[ -d "${HERE}/tmp/final.AppDir" ]] && rm -Rf "${HERE}/tmp/final.AppDir" >/dev/null 2>&1
         echo " Done!"
     ;;
     esac
@@ -173,19 +177,47 @@ cleanup_all(){
     echo " Done!"
 }
 
+is_update(){
+    GIT_LOCAL="${HERE}/tmp/src/box86"
+    if [[ "`git -C "${GIT_LOCAL}" branch`" =~ 'master' ]]; then
+        upstream='@{u}'
+        local="$(git -C "${GIT_LOCAL}" rev-parse @)"
+        remote="$(git -C "${GIT_LOCAL}" rev-parse "$upstream")"
+        if [ "$local" = "$remote" ]; then
+            return 1
+        else
+            return 0
+        fi
+        unset upstream local remote
+    else
+        return 0
+    fi
+    unset GIT_LOCAL
+}
+
 get_sources(){
-    rmdir "${HERE}/src/box86" >/dev/null 2>&1
-    if [[ -d "${HERE}/src/box86" ]]; then
-        printf "\nUpdating GIT Repository..."
-        git -C "${HERE}/src/box86" pull origin master >/dev/null 2>&1
-        error="$?"; [[ "$error" == 0 ]] && echo -e " Done!\n" || error 7
+    if [[ -z "$VER" ]]; then
+        echo -e "\nWhich version of the BOX86 would you like to use?"
+        read -ep "`printf "\e[1mEnter git tag or branch:\e[0m (default: master) "`" VER
+    fi
+    [[ ! -z "VER" ]] && GIT_FLAGS="--branch $VER"
+    stty -echo >/dev/null 2>&1
+    rmdir "${HERE}/tmp/src/box86" >/dev/null 2>&1
+    if [[ -d "${HERE}/tmp/src/box86" ]]; then
+        if is_update || [[ ! -z "${VER}" || "${VER}" != "master" ]]; then
+            printf "\nUpdating GIT Repository..."
+            rm -Rf "${HERE}/tmp/src/box86"
+            git clone ${GIT_FLAGS} --depth 1 "${GIT_REPO}" "${HERE}/tmp/src/box86" >/dev/null 2>&1
+            error="$?"; [[ "$error" == 0 ]] && echo -e " Done!\n" || error 7
+        fi
     else
         printf "\nCloning the box86 GIT repository..."
-        mkdir "${HERE}/src/box86"
-        git clone "${GIT_REPO}" "${HERE}/src/box86" >/dev/null 2>&1
+        mkdir "${HERE}/tmp/src/box86"
+        git clone ${GIT_FLAGS} --depth 1 "${GIT_REPO}" "${HERE}/tmp/src/box86" >/dev/null 2>&1
         error="$?"; [[ "$error" == 0 ]] && echo -e " Done!\n" || error 7
     fi
     [[ -d "${HERE}/base.AppDir" ]] || error 6
+    stty echo >/dev/null 2>&1
 }
 
 get_device_info(){
@@ -224,22 +256,22 @@ package_appimage_32(){
 
 make_chroot(){
      check_dependencies mkarchroot pacman
-     [[ -d "${HERE}/src/chroot" ]] && error 12 "src/chroot"
+     [[ -d "${HERE}/tmp/src/chroot" ]] && error 12 "tmp/src/chroot"
      echo "Please enter additional packages to install to the chroot enviroment."
      echo "You can leave this field empty if you want to use the defaults only."
      read -p "Pacman package list: (base-devel cmake python) " CHROOT_PACKAGES
      stty -echo >/dev/null 2>&1
-     mkarchroot -sC "${HERE}/tools/pacman.conf" "${HERE}/src/chroot" base-devel cmake python ${CHROOT_PACKAGES} \
+     mkarchroot -sC "${HERE}/tools/pacman.conf" "${HERE}/tmp/src/chroot" base-devel cmake python ${CHROOT_PACKAGES} \
      || (stty echo >/dev/null 2>&1; sudo env HERE="${HERE}" PKG="CHROOT_PACKAGES" \
-        bash -c 'stty -echo >/dev/null 2>&1; pacman  -Syr "${HERE}/src/chroot" \
+        bash -c 'stty -echo >/dev/null 2>&1; pacman  -Syr "${HERE}/tmp/src/chroot" \
         --config "${HERE}/tools/pacman.conf" base-devel cmake python ${PKG}') \
      || error 11
-     [[ -d "${HERE}/src/chroot" ]] && CHROOT_DIR="${HERE}/src/chroot"
+     [[ -d "${HERE}/tmp/src/chroot" ]] && CHROOT_DIR="${HERE}/tmp/src/chroot"
 }
 
 build_chroot(){
-    [[ -z "${CHROOT_DIR}" && -f "${HERE}/src/chroot/lib/ld-linux-armhf.so.3" ]] && \
-        CHROOT_DIR="${HERE}/src/chroot/" && \
+    [[ -z "${CHROOT_DIR}" && -f "${HERE}/tmp/src/chroot/lib/ld-linux-armhf.so.3" ]] && \
+        CHROOT_DIR="${HERE}/tmp/src/chroot/" && \
         echo "Found ARMHF chroot: \"${CHROOT_DIR}\"!"
     if [[ -z "$CHROOT_DIR" ]]; then
         until [[ ! -z "$LOOP_END" && "$LOOP_END" != 0 ]]; do
@@ -259,9 +291,9 @@ build_chroot(){
     BIN32="${CHROOT_DIR}/usr/bin"
     INT32="${CHROOT_DIR}/lib/ld-linux-armhf.so.3"
     check_dependencies --chroot make cmake gcc g++
-    flags="${cmake_flags[@]}" chroot /usr/bin/bash -c \
+    chroot env flags="${cmake_flags[@]}" /usr/bin/bash -c \
         'stty -echo >/dev/null 2>&1; cd /mnt; mkdir build >/dev/null 2>&1; \
-        cd build; cmake .. $flags -DCMAKE_BUILD_TYPE=RelWithDebInfo; \
+        cd build; cmake ../box86 ${flags} -DCMAKE_BUILD_TYPE=RelWithDebInfo; \
         make -j$(nproc); stty echo >/dev/null 2>&1'
     PACKAGE_MODE=0
 }
@@ -286,13 +318,13 @@ check_dependencies(){
 install_box86(){
     case "$PACKAGE_MODE" in
         0)
-            pkgdir="${HERE}/final.AppDir/usr"
-            install -Dm755 "${HERE}/src/box86/build/box86" "${pkgdir}/bin/box86"
+            pkgdir="${HERE}/tmp/final.AppDir/usr"
+            install -Dm755 "${HERE}/tmp/src/build/box86" "${pkgdir}/bin/box86"
             [[ ! -d "${pkgdir}/lib/i386-linux-gnu" ]] && mkdir -p "${pkgdir}/lib/i386-linux-gnu"
-            cp -Rdt "${pkgdir}/lib/i386-linux-gnu" "${HERE}/src/box86/x86lib/"*
+            cp -Rdt "${pkgdir}/lib/i386-linux-gnu" "${HERE}/tmp/src/box86/x86lib/"*
             chmod 755 "${pkgdir}/lib/i386-linux-gnu"
             chmod -R 644 "${pkgdir}/lib/i386-linux-gnu/"*
-            install -Dm644 "${HERE}/src/box86/LICENSE" "${pkgdir}/share/licenses/box86/LICENSE"
+            install -Dm644 "${HERE}/tmp/src/box86/LICENSE" "${pkgdir}/share/licenses/box86/LICENSE"
         ;;
     esac
     
@@ -315,14 +347,14 @@ install_libs(){
         [[ ! -d "${HERE}/final.AppDir/usr/lib/" ]] && mkdir -p "${HERE}/final.AppDir/usr/lib/"
         case "$lib_mode" in
             *'all'*)
-                cp -dt "${HERE}/final.AppDir/usr/lib/" "${CHROOT_DIR}/usr/lib/"* >/dev/null 2>&1
+                cp -dt "${HERE}/tmp/final.AppDir/usr/lib/" "${CHROOT_DIR}/usr/lib/"* >/dev/null 2>&1
                 error="$?"
             ;;
             *'".so"'*)
                 cd "${CHROOT_DIR}/usr/lib/"
                 readarray -d '' LIB_FILES < <(find * ! -type d -name '*.so' -print0 -o ! -type d -name '*.so.*' -print0)
                 for file in "${LIB_FILES[@]}"; do
-                    cp --parents -dt "${HERE}/final.AppDir/usr/lib/" "${file}"
+                    cp --parents -dt "${HERE}/tmp/final.AppDir/usr/lib/" "${file}"
                 done
                 error="$?"
                 cd "${OLD_WORKDIR}"
@@ -340,10 +372,11 @@ install_libs(){
                 for file in "${LIB_FILES[@]}"; do
                     file="$(tr -d '\n' <<<"${file}")"
                     if [[ -f "$file"  ]] && [[ "$file" == *'.so' || "$file" == *'.so.'* ]]; then
-                        cp -dt "${HERE}/final.AppDir/usr/lib/" "${file}"
+                        cp --parents -dt "${HERE}/tmp/final.AppDir/usr/lib/" "${file}"
                     fi
                 done
                 error="$?"
+                cd "${OLD_WORKDIR}"
             ;;
             *) error 10 ;;
         esac
@@ -351,7 +384,7 @@ install_libs(){
         [[ "$error" == 0 ]] && echo -e " Done!\n" || error 9 "copying libraries from the current chroot"
         stty echo >/dev/null 2>&1
         #sudo -p "[chown] Enter your password: " chown -R "$ID" "${HERE}/final.AppDir/usr/lib/"
-        find "${HERE}/final.AppDir/usr/lib/" -xtype l -delete
+        find "${HERE}/tmp/final.AppDir/usr/lib/" -xtype l -delete
     ;;
     1)
         #TODO: Install libs from the toolchain enviroment.
@@ -361,10 +394,10 @@ install_libs(){
 }
 
 package_appimage(){
-    if [[ -d "${HERE}/final.AppDir" ]]; then
-        cp -Rt "${HERE}/final.AppDir" "${HERE}/base.AppDir/"*
-        [[ -d "${HERE}/box86.AppDir" ]] && rm -Rf "${HERE}/box86.AppDir"
-        mv "${HERE}/final.AppDir" "${HERE}/box86.AppDir"
+    if [[ -d "${HERE}/tmp/final.AppDir" ]]; then
+        cp -Rdt "${HERE}/tmp/final.AppDir" "${HERE}/base.AppDir/"*
+        [[ -d "${HERE}/tmp/box86.AppDir" ]] && rm -Rf "${HERE}/tmp/box86.AppDir"
+        mv "${HERE}/tmp/final.AppDir" "${HERE}/tmp/box86.AppDir"
     fi
 }
 
@@ -385,7 +418,8 @@ ARCH="${ARCH:-${BOX86_APPIMAGE_ARCH:-$(uname -m)}}"
 BUILD_PLATFORM="${BUILD_PLATFORM:-${BOX86_APPIMAGE_BUILD_PLATFORM}}"
 CHROOT_DIR="${CHROOT_DIR:-${BOX86_APPIMAGE_CHROOT_DIR}}"
 CP_LIB_MODE="${CP_LIB_MODE:-${BOX86_APPIMAGE_CP_LIB_MODE}}"
-RESET="${APPIMAGE_RESET:-${BOX86_APPIMAGE_RESET}}"
+RESET="${RESET:-${BOX86_APPIMAGE_RESET}}"
+VER="${VER:-${BOX86_APPIMAGE_VER}}"
 
 # FIXME: Currently there's no support for the 32-bit build type.
 
@@ -398,7 +432,7 @@ PS3_DEFAULT="$PS3"
 PS3="$(printf '\033[1mEnter number:\033[0m') "
 if [[ ! -z "$RESET" ]]; then
     case "$RESET" in
-        *"package"*) package_appimage; ARCH="$ARCH" gen-appimage "${HERE}/box86.AppDir" "${HERE}/dist/box86-${ARCH}-${platform}.AppImage" ;;
+        *"package"*) package_appimage; ARCH="$ARCH" gen-appimage "${HERE}/tmp/box86.AppDir" "${HERE}/tmp/dist/box86-${ARCH}-${platform}.AppImage" ;;
     esac
     exit 0
 fi
@@ -420,7 +454,7 @@ if [[ "$(uname -m)" == "aarch64" ]]; then
         esac
         install_box86;
         [[ "$ARCH" == "aarch64" ]] && install_libs
-        package_appimage; ARCH="$ARCH" gen-appimage "${HERE}/box86.AppDir" "${HERE}/dist/box86-${ARCH}-${platform}.AppImage"
+        package_appimage; ARCH="$ARCH" gen-appimage "${HERE}/tmp/box86.AppDir" "${HERE}/tmp/dist/box86-${ARCH}-${platform}.AppImage"
         error="$?"; [[ "$error" == 0 ]] || error 9 "packaging the box86"
         cleanup
     fi
@@ -435,5 +469,5 @@ unset PS3_DEFAULT
 hash -r
 trap - EXIT INT
 tput rmcup
-echo -e "\nSuccessfully packaged the Appmage!\n"
+echo -e "\n🎉️ Successfully packaged the Appmage!\n"
 exit 0
