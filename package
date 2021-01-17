@@ -30,7 +30,9 @@ LIB_MODE_ARR=('Copy all files.' 'Copy ".so" libraries.'
               'Copy only necessary libraries.')
 AL_LIB_REQUIRED=('glibc' 'gcc-libs')
 SCRIPT_NAME="`basename "$(git -C "${HERE}" remote -v | head -n1 | awk '{print $2}')" .git`-`basename $0 .sh`"
+LOGFILE="${HERE}/build.log"
 [[ "$(date +%Y)" == "2021" ]] && CP_YEAR="2021" || CP_YEAR="2021-$(date %Y)"
+err_count=0
 
 # GOTO: External scripts
 hash -p "${HERE}/tools/gen-appimage.sh" gen-appimage
@@ -86,7 +88,7 @@ help(){
     help_nx "which will be used to download the other"
     help_nx "version of the BOX86 (than master)."
     echo -e "\nYou can also prefix the variable name with the \"BOX86_APPIMAGE_\" if you want"
-    echo "to save it as an enviroment variable and you are aware the regural variable"
+    echo "to save it as an enviromental variable and you are aware the regural variable"
     echo "names will be in conflict with variables used by the other software."
     help_tl "PLATFORMS:"
     printf -v PLATFORM_ALL '%s, ' "${PLATFORM_LIST[@]}"
@@ -119,31 +121,40 @@ usage(){
 }
 
 error(){
-    [[ "$1" != 130 ]] && sleep 3s
+    error_msg "$@"
+    if [[ "$1" != 130 ]]; then 
+        read -n1 -srp "$(printf '\e[1mPress any key to continue.\e[0m')"
+        echo
+    fi
     clear; tput rmcup
     trap - EXIT
-    printf "\nERROR: "
-    case "$1" in
-        1)  echo "Build method: \"${build_method}\" not implemented yet!"           ;;
-        2)  echo "GIT was not installed!"                                           ;;
-        3)  echo "Unsupported linux distrinution!"                                  ;;
-        4)  echo "Unsupported Raspberry Pi device!"                                 ;;
-        5)  echo "Missing dependency: ${depends}!"                                  ;;
-        6)  echo "Source file/directory not found!"                                 ;;
-        7)  echo "Couldn't get all sources!"                                        ;;
-        8)  echo "Unsupported architecture ${ARCH}!"                                ;;
-        9)  echo "An error occured while ${2}!"                                     ;;
-        10) echo "Unimplemented selection!"                                         ;;
-        11) echo "Couldn't make the chroot enviroment!"                             ;;
-        12) echo "Directory \"${2}\" already exists!"                               ;;
-        130) echo "Received INT signal!"                                            ;;
-        *) 
-            echo "Unknown error!"
-            echo "Exit code ${1}!"
-        ;;
-    esac
+    error_msg "$@"
     stty echo >/dev/null 2>&1
-    echo; exit "$1"
+    exit "$1"
+}
+
+error_msg(){
+        printf "\n\e[1;91mERROR:\e[0m "
+        case "$1" in
+            1)  echo "Build method: \"${build_method}\" not implemented yet!"           ;;
+            2)  echo "GIT was not installed!"                                           ;;
+            3)  echo "Unsupported linux distrinution!"                                  ;;
+            4)  echo "Unsupported Raspberry Pi device!"                                 ;;
+            5)  echo "Missing dependency: ${depends}!"                                  ;;
+            6)  echo "Source file/directory not found!"                                 ;;
+            7)  echo "Couldn't get all sources!"                                        ;;
+            8)  echo "Unsupported architecture ${ARCH}!"                                ;;
+            9)  echo "An error occured while ${2}!"                                     ;;
+            10) echo "Unimplemented selection!"                                         ;;
+            11) echo "Couldn't make the chroot enviroment!"                             ;;
+            12) echo "Directory \"${2}\" already exists!"                               ;;
+            130) echo "Received INT signal!"                                            ;;
+            *) 
+                echo "Unknown error!"
+                echo "Exit code ${1}!"
+            ;;
+        esac
+        printf "\n"
 }
 
 workdirs(){
@@ -200,7 +211,7 @@ get_sources(){
         echo -e "\nWhich version of the BOX86 would you like to use?"
         read -ep "`printf "\e[1mEnter git tag or branch:\e[0m (default: master) "`" VER
     fi
-    [[ ! -z "VER" ]] && GIT_FLAGS="--branch $VER"
+    [[ ! -z "$VER" ]] && GIT_FLAGS="--branch $VER"
     stty -echo >/dev/null 2>&1
     rmdir "${HERE}/tmp/src/box86" >/dev/null 2>&1
     if [[ -d "${HERE}/tmp/src/box86" ]]; then
@@ -420,8 +431,6 @@ CHROOT_DIR="${CHROOT_DIR:-${BOX86_APPIMAGE_CHROOT_DIR}}"
 CP_LIB_MODE="${CP_LIB_MODE:-${BOX86_APPIMAGE_CP_LIB_MODE}}"
 RESET="${RESET:-${BOX86_APPIMAGE_RESET}}"
 VER="${VER:-${BOX86_APPIMAGE_VER}}"
-
-# FIXME: Currently there's no support for the 32-bit build type.
 
 # Main part of the script
 tput smcup; clear
