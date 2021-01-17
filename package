@@ -451,7 +451,7 @@ if [[ "$(uname -m)" == "aarch64" ]]; then
         [[ ! -z "$build_method" ]] && break
     done
     if [[ ! -z "$build_method" ]]; then
-        check_dependencies 'git' 'arch-chroot'
+        check_dependencies 'git' 'arch-chroot' 'mksquashfs'
         workdirs; get_sources
         echo "Platform: \"$(tr a-z A-Z <<<"${platform}")\"."
         echo -e "CMAKE flags: ${cmake_flags[@]}\n"
