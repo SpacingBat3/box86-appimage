@@ -215,7 +215,7 @@ get_sources(){
     stty -echo >/dev/null 2>&1
     rmdir "${HERE}/tmp/src/box86" >/dev/null 2>&1
     if [[ -d "${HERE}/tmp/src/box86" ]]; then
-        if is_update || [[ ! -z "${VER}" || "${VER}" != "master" ]]; then
+        if is_update || [[ ! -z "${VER}" && "${VER}" != "master" ]]; then
             printf "\nUpdating GIT Repository..."
             rm -Rf "${HERE}/tmp/src/box86"
             git clone ${GIT_FLAGS} --depth 1 "${GIT_REPO}" "${HERE}/tmp/src/box86" >/dev/null 2>&1
@@ -290,7 +290,7 @@ build_chroot(){
             if [[ ! -d "$CHROOT_DIR" ]]; then
                 echo "$CHROOT_DIR isn't a directory!"
                 echo "Please type the correct path to the directory."
-            elif [[ ! -f "$CHROOT/lib/ld-linux-armhf.so.3" ]]; then
+            elif [[ ! -f "${CHROOT_DIR}/lib/ld-linux-armhf.so.3" ]]; then
                 echo "$CHROOT_DIR has no ARMHF linker!"
             else
                 LOOP_END=1
