@@ -1,8 +1,6 @@
 #!/bin/sh
 # A workaround script to run WINE without ARMHF interpreter
 # inside the `/lib` path.
-
-# debug info && exec:
-#echo "${LD_INT} ${PRELOAD_FLAGS[@]} ${BOX86_BIN} ${WINE_BINARY} ${@}"
+[[ ! -z "$LD32_PRELOAD" ]] && [[ ! -z "$LD_INT" ]] && export PRELOAD_FLAGS=("--preload" "${LD32_PRELOAD}") || unset PRELOAD_FLAGS >/dev/null 2>&1
 setarch -L linux32 "${LD_INT}" "${PRELOAD_FLAGS[@]}" "${BOX86_BIN}" "${WINE_BINARY}" "${@}"
 exit 0
