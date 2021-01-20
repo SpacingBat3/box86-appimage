@@ -174,8 +174,8 @@ workdirs(){
 
 cleanup() {
     printf "\nRemoving unnecessary \"*.AppDir\" folders..."
-    [[ -d "${HERE}/final.AppDir" ]] && rm -Rf "${HERE}/final.AppDir" >/dev/null 2>&1
-    [[ -d "${HERE}/box86.AppDir" ]] && rm -Rf "${HERE}/box86.AppDir" >/dev/null 2>&1
+    [[ -d "${HERE}/tmp/final.AppDir" ]] && rm -Rf "${HERE}/tmp/final.AppDir" >/dev/null 2>&1
+    [[ -d "${HERE}/tmp/box86.AppDir" ]] && rm -Rf "${HERE}/tmp/box86.AppDir" >/dev/null 2>&1
     echo " Done!"
 }
 
@@ -355,7 +355,7 @@ install_libs(){
         
         stty -echo >/dev/null 2>&1
         printf "\nCopying the \`/lib\` content from the current chroot..."
-        [[ ! -d "${HERE}/final.AppDir/usr/lib/" ]] && mkdir -p "${HERE}/final.AppDir/usr/lib/"
+        [[ ! -d "${HERE}/tmp/final.AppDir/usr/lib/" ]] && mkdir -p "${HERE}/tmp/final.AppDir/usr/lib/"
         case "$lib_mode" in
             *'all'*)
                 cp -dt "${HERE}/tmp/final.AppDir/usr/lib/" "${CHROOT_DIR}/usr/lib/"* >/dev/null 2>&1
@@ -373,7 +373,7 @@ install_libs(){
             *'necessary'*)
                 #FIXME: Debian CHROOT support (and probably others too):
                 if [[ -f /etc/pacman.conf && -f "${CHROOT_32}/etc/pacman.conf" ]]; then
-                    readarray LIB_FILES < <(pacman -Qlr  "$CHROOT_DIR" "${AL_LIB_REQUIRED[@]}" | awk '{print $2}' | grep usr/lib | sed "s~$CHROOT_DIR/usr/lib/~~g")
+                    readarray LIB_FILES < <(pacman -Qlr  "$CHROOT_DIR" "${AL_LIB_REQUIRED[@]}" 2>/dev/null | awk '{print $2}' | grep usr/lib | sed "s~$CHROOT_DIR/usr/lib/~~g")
                 elif [[ -f "${CHROOT_DIR}/etc/pacman.conf" ]]; then
                     readarray LIB_FILES < <(chroot env LIBS=("${AL_LIB_REQUIRED[@]}") /usr/bin/bash -c 'pacman -Ql "${LIBS[@]}" | awk {print\ \$2} | grep usr/lib | sed s./usr/lib/..g ' )
                 else
@@ -394,7 +394,7 @@ install_libs(){
         stty echo >/dev/null 2>&1
         [[ "$error" == 0 ]] && echo -e " Done!\n" || error 9 "copying libraries from the current chroot"
         stty echo >/dev/null 2>&1
-        #sudo -p "[chown] Enter your password: " chown -R "$ID" "${HERE}/final.AppDir/usr/lib/"
+        #sudo -p "[chown] Enter your password: " chown -R "$ID" "${HERE}/finals.AppDir/usr/lib/"
         find "${HERE}/tmp/final.AppDir/usr/lib/" -xtype l -delete
     ;;
     1)

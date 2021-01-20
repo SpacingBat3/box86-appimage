@@ -1,4 +1,14 @@
 #!/bin/sh
+# Archlinux-styled colored messages:
+msg_high(){
+    printf "\e[1;92m==> \e[0;1m%s\e[0m\n" "$@"
+}
+msg_low(){
+    printf "\e[1;94m    -> \e[0m%s\n" "$@"
+}
+msg_warn(){
+    printf "\e[1;93m==> WARNING: \e[0;1m%s\e[0m\n" "$@"
+}
 USERNAME="$USER"
 SELF="$(readlink -f "$0")"
 HERE="${SELF%/*}"
@@ -7,13 +17,17 @@ export PATH="${HERE}/usr/bin/:${HERE}/usr/sbin/:${HERE}/usr/games/:${HERE}/bin/:
 export LD_LIBRARY_PATH="${HERE}/usr/lib/:${HERE}/usr/lib/i386-linux-gnu/:${HERE}/usr/lib/x86_64-linux-gnu/:${HERE}/usr/lib32/:${HERE}/usr/lib64/:${HERE}/lib/:${HERE}/lib/i386-linux-gnu/:${HERE}/lib/x86_64-linux-gnu/:${HERE}/lib32/:${HERE}/lib64/${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="${HERE}/usr/share/${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
 EXEC=$(grep -e '^Exec=.*' "${HERE}"/*.desktop | head -n 1 | cut -d "=" -f 2 | cut -d " " -f 1)
+export BOX86_BIN="$(which "${EXEC}")"
 # Additional variables
-[[ -d "${HERE}/usr/lib/dri" ]] && export LIBGL_DRIVERS_PATH="${HERE}/usr/lib/dri:/usr/lib/dri:${LIBGL_DRIVERS_PATH}"
-[[ -f "${HERE}/usr/lib/pulseaudio/libpulsecommon-14.0.so" ]] && export LD32_PRELOAD="${HERE}/usr/lib/pulseaudio/libpulsecommon-14.0.so:${LD32_PRELOAD}"
-# Use interpreter for 32-bit applications:
-LD_INT="${HERE}/usr/lib/ld-linux-armhf.so.3"
-if [[ -z "${LD32_PRELOAD}" ]]; then
-    exec "${LD_INT}" "`which "${EXEC}"`" "$@"
-else
-    exec "${LD_INT}" --preload "${LD32_PRELOAD}" "`which "${EXEC}"`" "$@"
+[[ -d "${HERE}/usr/lib/dri" ]] && export LIBGL_DRIVERS_PATH="${HERE}/usr/lib/dri:/usr/lib/dri${LIBGL_DRIVERS_PATH:+:$LIBGL_DRIVERS_PATH}"
+[[ -f "${HERE}/usr/lib/pulseaudio/libpulsecommon-14.0.so" ]] && export LD32_PRELOAD="${HERE}/usr/lib/pulseaudio/libpulsecommon-14.0.so${LD32_PRELOAD:+:$LD32_PRELOAD}"
+# Use built-in interpreter for 32-bit applications if it is available:
+[[ -f "${HERE}/usr/lib/ld-linux-armhf.so.3" ]] && export LD_INT="${HERE}/usr/lib/ld-linux-armhf.so.3"
+[[ ! -z "$LD32_PRELOAD" ]] && [[ ! -z "$LD_INT" ]] && export PRELOAD_FLAGS=("--preload" "${LD32_PRELOAD}") || unset PRELOAD_FLAGS >/dev/null 2>&1
+if [[ -f "$1" && "$1" == *'wine' ]]; then
+    export WINELOADER="${HERE}/fakewineloader"
+    export WINE_BINARY="`readlink -f "$1"`"
+    export PATH="${PWD}:${PATH}"
 fi
+exec "${LD_INT}" "${PRELOAD_FLAGS[@]}" "${BOX86_BIN}" "$@"
+exit 0
