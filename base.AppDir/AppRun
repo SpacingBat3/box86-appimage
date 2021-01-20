@@ -27,7 +27,7 @@ export BOX86_BIN="$(which "${EXEC}")"
 if [[ -f "$1" && "$1" == *'wine' ]]; then
     export WINELOADER="${HERE}/fakewineloader"
     export WINE_BINARY="`readlink -f "$1"`"
-    export PATH="${PWD}:${PATH}"
+    export PATH="${WINE_BINARY%/*}:${PATH}"
 fi
 exec "${LD_INT}" "${PRELOAD_FLAGS[@]}" "${BOX86_BIN}" "$@"
 exit 0
