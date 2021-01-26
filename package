@@ -82,7 +82,7 @@ help(){
     help_dc2 "CHROOT_DIR" "[PATH]" "Sets the ARMHF chroot path which will"
     help_nx "be used to compile box86 on AARCH64"
     help_nx "host."
-    help_dc2 "CP_LIB_MODE" "[0-${x}]" "Sets the mode of filtering libraries."
+    help_dc2 "CP_LIB" "[0-${x}]" "Sets the mode of filtering libraries."
     help_dc2 "RESET" "[STEP]" "Restart the build from this STEP."
     help_dc2 "VER" "[TAG/BRANCH]" "Tag or branch of the box86 repo"
     help_nx "which will be used to download the other"
@@ -428,7 +428,7 @@ unset var
 ARCH="${ARCH:-${BOX86_APPIMAGE_ARCH:-$(uname -m)}}"
 BUILD_PLATFORM="${BUILD_PLATFORM:-${BOX86_APPIMAGE_BUILD_PLATFORM}}"
 CHROOT_DIR="${CHROOT_DIR:-${BOX86_APPIMAGE_CHROOT_DIR}}"
-CP_LIB_MODE="${CP_LIB_MODE:-${BOX86_APPIMAGE_CP_LIB_MODE}}"
+CP_LIB_MODE="${CP_LIB:-${BOX86_APPIMAGE_CP_LIB}}" # nah, I'm just too lazy to change the variable name in code.
 RESET="${RESET:-${BOX86_APPIMAGE_RESET}}"
 VER="${VER:-${BOX86_APPIMAGE_VER}}"
 
@@ -478,5 +478,6 @@ unset PS3_DEFAULT
 hash -r
 trap - EXIT INT
 tput rmcup
-echo -e "\n🎉️ Successfully packaged the Appmage!\n"
+echo -e "\n🎉️ Successfully packaged the Appmage!"
+echo -e "(tmp/dist/box86-${ARCH}-${platform}.AppImage)\n"
 exit 0

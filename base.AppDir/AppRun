@@ -20,14 +20,21 @@ EXEC=$(grep -e '^Exec=.*' "${HERE}"/*.desktop | head -n 1 | cut -d "=" -f 2 | cu
 export BOX86_BIN="$(which "${EXEC}")"
 # Additional variables
 [[ -d "${HERE}/usr/lib/dri" ]] && export LIBGL_DRIVERS_PATH="${HERE}/usr/lib/dri:/usr/lib/dri${LIBGL_DRIVERS_PATH:+:$LIBGL_DRIVERS_PATH}"
-[[ -f "${HERE}/usr/lib/pulseaudio/libpulsecommon-14.0.so" ]] && export LD32_PRELOAD="${HERE}/usr/lib/pulseaudio/libpulsecommon-14.0.so${LD32_PRELOAD:+:$LD32_PRELOAD}"
+if [[ -f "${HERE}/usr/lib/pulseaudio/libpulsecommon-"*".so" ]]; then
+    PULSE_LIB="$(printf "${HERE}/usr/lib/pulseaudio/libpulsecommon-"*".so")"
+    export LD32_PRELOAD="${PULSE_LIB}${LD32_PRELOAD:+:$LD32_PRELOAD}"
+fi
 # Use built-in interpreter for 32-bit applications if it is available:
 [[ -f "${HERE}/usr/lib/ld-linux-armhf.so.3" ]] && export LD_INT="${HERE}/usr/lib/ld-linux-armhf.so.3"
 [[ ! -z "$LD32_PRELOAD" ]] && [[ ! -z "$LD_INT" ]] && export PRELOAD_FLAGS=("--preload" "${LD32_PRELOAD}") || unset PRELOAD_FLAGS >/dev/null 2>&1
-if [[ -f "$1" && "$1" == *'wine' ]]; then
-    export WINELOADER="${HERE}/fakewineloader"
+if [[ -f "$1" && "$1" =~ 'wine' && ! -z "${LD_INT}" ]]; then
     export WINE_BINARY="`readlink -f "$1"`"
-    export PATH="${WINE_BINARY%/*}:${PATH}"
+    export PATH="${WINE_BINARY%/*}:${PATH:+:${PATH}}"
+    [[ -f "/lib/ld-linux-armhf.so.3" ]] && export LD_PRELOAD="$LD32_PRELOAD" || export WINELOADER="${HERE}/fakewineloader"
 fi
-exec "${LD_INT}" "${PRELOAD_FLAGS[@]}" "${BOX86_BIN}" "$@"
+if [[ ! -z "${LD_INT}" ]]; then
+    "${LD_INT}" "${PRELOAD_FLAGS[@]}" "${BOX86_BIN}" "$@"
+else
+    exec "${BOX86_BIN}" "$@"
+fi
 exit 0
