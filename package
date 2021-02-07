@@ -26,9 +26,10 @@ ME="$(basename "$0" .sh)"
 OLD_WORKDIR="$PWD"
 ID="${UID}:$(id -g ${USER})"
 PLATFORM_LIST=('Raspberry Pi (2/3/4)' 'RK3399' 'ODROID' 'Gameshell' 'Pandora' 'Pyra')
+BUILD_METHOD_ARR=("chroot enviroment" "toolchain" "new chroot enviroment")
 LIB_MODE_ARR=('Copy all files.' 'Copy ".so" libraries.'
               'Copy only necessary libraries.')
-AL_LIB_REQUIRED=('glibc' 'gcc-libs')
+PACMAN_BOX86_LIBS=('glibc' 'gcc-libs')
 SCRIPT_NAME="`basename "$(git -C "${HERE}" remote -v | head -n1 | awk '{print $2}')" .git`-`basename $0 .sh`"
 LOGFILE="${HERE}/build.log"
 [[ "$(date +%Y)" == "2021" ]] && CP_YEAR="2021" || CP_YEAR="2021-$(date %Y)"
@@ -72,34 +73,55 @@ chroot(){
 }
 
 help(){
+    get_device_info
     x="$((${#LIB_MODE_ARR[@]}-1))"
+    y="$((${#BUILD_METHOD_ARR[@]}-1))"
     usage
     help_tl "VARIABLES:"
     help_dc2 "ARCH" "[aarch64/armv7(l/h)]" "BOX86 target CPU architecture"
-    help_nx "(default: host arch = `uname -m`)"
-    help_dc2 "BUILD_PLATFORM" "[PLATFORM]" "Overwrites PLATFORM to optimize the"
-    help_nx "build for (default: host = ${platform})."
+    help_nx "(default: host arch == `uname -m`)"
+    
+    help_dc2 "BUILD_METHOD" "[0-${y}]" "A method to use for the box86"
+    help_nx "compilation on the AArch64 hosts."
+    
+    help_dc2 "BUILD_PLATFORM" "[PLATFORM]" "Overwrites PLATFORM to optimize the build"
+    help_nx "for (default: host == \"${platform_full}\")."
+    
     help_dc2 "CHROOT_DIR" "[PATH]" "Sets the ARMHF chroot path which will"
     help_nx "be used to compile box86 on AARCH64"
     help_nx "host."
+    
     help_dc2 "CP_LIB" "[0-${x}]" "Sets the mode of filtering libraries."
+    
+    help_dc2 "OUT" "[DIRECTORY]" "A path to the directory, inside which"
+    help_nx "the AppImage will be saved."
+    
     help_dc2 "RESET" "[STEP]" "Restart the build from this STEP."
+    
     help_dc2 "VER" "[TAG/BRANCH]" "Tag or branch of the box86 repo"
     help_nx "which will be used to download the other"
     help_nx "version of the BOX86 (than master)."
+    
     echo -e "\nYou can also prefix the variable name with the \"BOX86_APPIMAGE_\" if you want"
-    echo "to save it as an enviromental variable and you are aware the regural variable"
+    echo "to save it as an enviromental variable and you are aware the regular variable"
     echo "names will be in conflict with variables used by the other software."
     help_tl "PLATFORMS:"
     printf -v PLATFORM_ALL '%s, ' "${PLATFORM_LIST[@]}"
     echo -e " \e[1;92m✓\e[0m ${PLATFORM_ALL%, }"
     echo
     x=0
+    y=0
+    help_tl "AARCH64 BUILD METHODS:"
+    until [[ "$y" -gt "$[${#BUILD_METHOD_ARR[@]}-1]" ]]; do
+        printf " \e[1m%s\e[0m == %s\n" "$y" "${BUILD_METHOD_ARR[$y]}"
+        let y++
+    done
     help_tl "LIBRARY FILTERS:"
     until [[ "$x" -gt "$[${#LIB_MODE_ARR[@]}-1]" ]]; do
-        printf " \e[1m%s\e[0m = %s\n" "$x" "${LIB_MODE_ARR[$x]}"
+        printf " \e[1m%s\e[0m == %s\n" "$x" "${LIB_MODE_ARR[$x]}"
         let x++
     done
+    let x-- y--
     echo -e "\nThese values also indidicates the disk space usage by the libraries inside"
     echo "the AppImage – where 0 indicates the highest disk space usage and ${x} – the"
     echo "lowest."
@@ -112,7 +134,7 @@ help(){
 }
 
 usage(){
-    echo -e "\n\e[1mUSAGE\e[0m: `basename $0` [FOO=BAR]..."
+    echo -e "\n\e[1mUSAGE\e[0m: `basename $0` [ARGUMENT] [FOO=BAR]..."
     help_tl "ARGUMENTS:"
     help_dc " -h   --help" "Display entire help message."
     help_dc " -u   --usage" "Display script usage."
@@ -136,26 +158,32 @@ error(){
 error_msg(){
         printf "\n\e[1;91mERROR:\e[0m "
         case "$1" in
-            1)  echo "Build method: \"${build_method}\" not implemented yet!"           ;;
-            2)  echo "GIT was not installed!"                                           ;;
-            3)  echo "Unsupported linux distrinution!"                                  ;;
-            4)  echo "Unsupported Raspberry Pi device!"                                 ;;
-            5)  echo "Missing dependency: ${depends}!"                                  ;;
-            6)  echo "Source file/directory not found!"                                 ;;
-            7)  echo "Couldn't get all sources!"                                        ;;
-            8)  echo "Unsupported architecture ${ARCH}!"                                ;;
-            9)  echo "An error occured while ${2}!"                                     ;;
-            10) echo "Unimplemented selection!"                                         ;;
-            11) echo "Couldn't make the chroot enviroment!"                             ;;
-            12) echo "Directory \"${2}\" already exists!"                               ;;
+            1)   echo "Build method: \"${build_method}\" not implemented yet!"           ;;
+            2)   echo "GIT was not installed!"                                           ;;
+            3)   echo "Unsupported linux distrinution!"                                  ;;
+            4)   echo "Unsupported Raspberry Pi device!"                                 ;;
+            5)   echo "Missing dependency: ${depends}!"                                  ;;
+            6)   echo "Source file/directory not found!"                                 ;;
+            7)   echo "Couldn't get all sources!"                                        ;;
+            8)   echo "Unsupported architecture ${ARCH}!"                                ;;
+            9)   echo "An error occured while ${2}!"                                     ;;
+            10)  echo "Unimplemented selection!"                                         ;;
+            11)  echo "Couldn't make the chroot enviroment!"                             ;;
+            12)  echo "Directory \"${2}\" already exists!"                               ;;
             130) echo "Received INT signal!"                                            ;;
             *) 
-                echo "Unknown error!"
-                echo "Exit code ${1}!"
+                 echo "Unknown error!"
+                 echo "Exit code ${1}!"
             ;;
         esac
         printf "\n"
 }
+
+warn(){
+    printf "\n\e[1;93mWARN:\e[0m "
+    echo -e "$@" "\n"
+}
+
 
 workdirs(){
     case "${argv[@]}" in
@@ -165,7 +193,7 @@ workdirs(){
     *)
         printf "\nPreparing the script's work directory..."
         [[ ! -d "${HERE}/tmp/src" ]] && mkdir "${HERE}/tmp/src"
-        [[ -f "${HERE}/tmp/src/box86/build/CMakeCache.txt" ]] && rm -f "${HERE}/box86/build/CMakeCache.txt"
+        [[ -f "${HERE}/tmp/src/box86/build/CMakeCache.txt" ]] && rm -f "${HERE}/tmp/src/box86/build/CMakeCache.txt"
         [[ -d "${HERE}/tmp/final.AppDir" ]] && rm -Rf "${HERE}/tmp/final.AppDir" >/dev/null 2>&1
         echo " Done!"
     ;;
@@ -189,8 +217,9 @@ cleanup_all(){
 }
 
 is_update(){
-    GIT_LOCAL="${HERE}/tmp/src/box86"
+    GIT_LOCAL="${1:-${HERE}/tmp/src/box86}"
     if [[ "`git -C "${GIT_LOCAL}" branch`" =~ 'master' ]]; then
+        git -C "$GIT_LOCAL" fetch >/dev/null 2>&1
         upstream='@{u}'
         local="$(git -C "${GIT_LOCAL}" rev-parse @)"
         remote="$(git -C "${GIT_LOCAL}" rev-parse "$upstream")"
@@ -243,25 +272,22 @@ get_device_info(){
                 *) error 4 # RPi 1/0 are not supported, cancel building.
             esac
             platform="rpi${pi_ver}" # used for artifact name
+            platform_full="Raspberry Pi ${pi_ver}"
             cmake_flags=("-DRPI${pi_ver}=1")
         ;;
         # Other ARM Boards
-        *"RK3399"*)    platform='rk3399';    cmake_flags=('-DRK3399=1')       ;;
-        *"ODROID"*)    platform='odroid';    cmake_flags=('-DODROID=1')       ;;
+        *"RK3399"*)    platform='rk3399';    cmake_flags=('-DRK3399=1'); platform_full="RK3399" ;;
+        *"ODROID"*)    platform='odroid';    cmake_flags=('-DODROID=1'); platform_full="ODROID" ;;
         *"Gameshell"*) platform='gameshell'; cmake_flags=('-DGAMESHELL=1')    ;;
         *"Pandora"*)   platform='pandora';   cmake_flags=('-DPANDORA=1')      ;;
         *"Pyra"*)      platform='pyra';      cmake_flags=('-DPYRA=1')         ;;
         *)             platform='arm';       cmake_flags=('-DARM_DYNAREC=ON') ;;
     esac
+    [[ -z platform_full ]] && platform_full="${platform^}"
 }
 
 build_32(){
     # TODO: Build script for 32-bit OS.
-    echo
-}
-
-package_appimage_32(){
-    # TODO: Package script for the 32-bit OS.
     echo
 }
 
@@ -303,8 +329,9 @@ build_chroot(){
     INT32="${CHROOT_DIR}/lib/ld-linux-armhf.so.3"
     check_dependencies --chroot make cmake gcc g++
     chroot env flags="${cmake_flags[@]}" /usr/bin/bash -c \
-        'stty -echo >/dev/null 2>&1; cd /mnt; mkdir build >/dev/null 2>&1; \
-        cd build; cmake ../box86 ${flags} -DCMAKE_BUILD_TYPE=RelWithDebInfo; \
+        'stty -echo >/dev/null 2>&1; cd /mnt/box86; \
+        mkdir build >/dev/null 2>&1; cd build; \
+        cmake .. ${flags} -DCMAKE_BUILD_TYPE=RelWithDebInfo; \
         make -j$(nproc); stty echo >/dev/null 2>&1'
     PACKAGE_MODE=0
 }
@@ -330,7 +357,7 @@ install_box86(){
     case "$PACKAGE_MODE" in
         0)
             pkgdir="${HERE}/tmp/final.AppDir/usr"
-            install -Dm755 "${HERE}/tmp/src/build/box86" "${pkgdir}/bin/box86"
+            install -Dm755 "${HERE}/tmp/src/box86/build/box86" "${pkgdir}/bin/box86"
             [[ ! -d "${pkgdir}/lib/i386-linux-gnu" ]] && mkdir -p "${pkgdir}/lib/i386-linux-gnu"
             cp -Rdt "${pkgdir}/lib/i386-linux-gnu" "${HERE}/tmp/src/box86/x86lib/"*
             chmod 755 "${pkgdir}/lib/i386-linux-gnu"
@@ -341,10 +368,39 @@ install_box86(){
     
 }
 
+guess_pm(){
+    #FIXME: Debian CHROOT support (and probably others too):
+    if [[ -f /etc/pacman.conf && -f "${CHROOT_DIR}/etc/pacman.conf" ]]; then
+        pm_files(){
+            pacman -Qlr "$CHROOT_DIR" "$@" 2>/dev/null | awk '{print $2}'
+        }
+        pm_licenses(){
+            pacman -Qlr "$CHROOT_DIR" "$@" 2>/dev/null | grep -o '.*/usr/share/licenses/.*/' | sort | uniq | awk '{print $2}'
+        }
+        pm_search(){
+            pacman -Qlr "$CHROOT_DIR" 2>/dev/null | grep "$1" | awk '{print $1}' | sort | uniq
+        }
+    elif [[ -f "${CHROOT_DIR}/etc/pacman.conf" ]]; then
+        pm_files(){
+            chroot env LIBS="$@" /usr/bin/bash -c 'pacman -Ql $LIBS | awk {print\ \$2}'
+        }
+        pm_licenses(){
+            chroot env PKGS="${@}" /usr/bin/bash -c 'pacman -Ql $PKGS | grep -o ".*/usr/share/licenses/.*/" | sort | uniq | awk {print\ \$2}'
+        }
+        pm_search(){
+            chroot env FILE="$1" /usr/bin/bash -c 'pacman -Ql | grep -o "$FILE" | awk {print\ \$1} | sort | uniq'
+        }
+    else
+        [[ "$1" == "--strict" ]] && error 3 || warn "Unknown package manager of your host/chroot distribution."
+        returnvalue=3
+    fi
+    return $returnvalue
+}
+
 install_libs(){
     case "$PACKAGE_MODE" in
     0)
-        if [[ "$CP_LIB_MODE" > 0 ]] && [[ "$CP_LIB_MODE" < "${#LIB_MODE_ARR[@]}" ]] && [ "$CP_LIB_MODE" -eq "$CP_LIB_MODE" ] 2>/dev/null ; then
+        if [[ "$CP_LIB_MODE" -ge 0 ]] && [[ "$CP_LIB_MODE" -lt "${#LIB_MODE_ARR[@]}" ]] && [ "$CP_LIB_MODE" -eq "$CP_LIB_MODE" ] 2>/dev/null ; then
             lib_mode="${LIB_MODE_ARR[$CP_LIB_MODE]}"
         else
             echo -e "\n\e[1mSelect the method on which libraries are copied:\e[0m "
@@ -361,7 +417,7 @@ install_libs(){
                 cp -dt "${HERE}/tmp/final.AppDir/usr/lib/" "${CHROOT_DIR}/usr/lib/"* >/dev/null 2>&1
                 error="$?"
             ;;
-            *'".so"'*)
+            *'.so'*)
                 cd "${CHROOT_DIR}/usr/lib/"
                 readarray -d '' LIB_FILES < <(find * ! -type d -name '*.so' -print0 -o ! -type d -name '*.so.*' -print0)
                 for file in "${LIB_FILES[@]}"; do
@@ -371,14 +427,9 @@ install_libs(){
                 cd "${OLD_WORKDIR}"
             ;;
             *'necessary'*)
-                #FIXME: Debian CHROOT support (and probably others too):
-                if [[ -f /etc/pacman.conf && -f "${CHROOT_32}/etc/pacman.conf" ]]; then
-                    readarray LIB_FILES < <(pacman -Qlr  "$CHROOT_DIR" "${AL_LIB_REQUIRED[@]}" 2>/dev/null | awk '{print $2}' | grep usr/lib | sed "s~$CHROOT_DIR/usr/lib/~~g")
-                elif [[ -f "${CHROOT_DIR}/etc/pacman.conf" ]]; then
-                    readarray LIB_FILES < <(chroot env LIBS=("${AL_LIB_REQUIRED[@]}") /usr/bin/bash -c 'pacman -Ql "${LIBS[@]}" | awk {print\ \$2} | grep usr/lib | sed s./usr/lib/..g ' )
-                else
-                    error 3
-                fi
+                guess_pm --strict;
+                #FIXME: Guess debian dependencies:
+                readarray LIB_FILES < <(pm_files "${PACMAN_BOX86_LIBS[@]}" | grep 'usr/lib' | sed 's~.*/usr/lib/~~g')
                 cd "${CHROOT_DIR}/usr/lib/"
                 for file in "${LIB_FILES[@]}"; do
                     file="$(tr -d '\n' <<<"${file}")"
@@ -393,23 +444,81 @@ install_libs(){
         esac
         stty echo >/dev/null 2>&1
         [[ "$error" == 0 ]] && echo -e " Done!\n" || error 9 "copying libraries from the current chroot"
-        stty echo >/dev/null 2>&1
-        #sudo -p "[chown] Enter your password: " chown -R "$ID" "${HERE}/finals.AppDir/usr/lib/"
         find "${HERE}/tmp/final.AppDir/usr/lib/" -xtype l -delete
     ;;
     1)
-        #TODO: Install libs from the toolchain enviroment.
+        #TODO: Install libs while building box86 with the toolchain.
         echo "TODO!" 
     ;;
     esac
 }
-
-package_appimage(){
+copy_licenses(){
+    case "$PACKAGE_MODE" in
+    0)
+        stty -echo
+        [[ ! -d "${HERE}/tmp/final.AppDir/usr/share/licenses/" ]] && mkdir -p "${HERE}/tmp/final.AppDir/usr/share/licenses/"
+        case "$lib_mode" in
+            *'all'*)
+                guess_pm
+                if [[ "$?" == 0 ]]; then
+                    printf "\nCopying the licenses..."
+                    LICENSE_PACK="$(pm_search 'lib/')"
+                    readarray LICENSE_FILES < <(pm_licenses ${LICENSE_PACK})
+                    for dir in "${LICENSE_FILES[@]}"; do
+                        dir_final="$(tr -d '\n' <<<"$dir")"
+                        cp -Rdt "${HERE}/tmp/final.AppDir/usr/share/licenses/" "$dir_final"
+                        unset dir_final
+                    done
+                    echo -e " Done!\n"
+                else
+                    warn "Skipped copying the licenses, AppImage will be for personal use only."
+                fi
+            ;;
+            *'.so'*)
+                guess_pm 
+                if [[ "$?" == 0 ]]; then
+                    printf "\nCopying the licenses..."
+                    LICENSE_PACK="$(printf "`pm_search 'lib/.*\.so\..*'`; pm_search 'lib/.*\.so$'" | sort | uniq | tr '\n' ' ')"
+                    readarray LICENSE_FILES < <(pm_licenses ${LICENSE_PACK})
+                    for dir in "${LICENSE_FILES[@]}"; do
+                        dir_final="$(tr -d '\n' <<<"$dir")"
+                        cp -Rdt "${HERE}/tmp/final.AppDir/usr/share/licenses/" "$dir_final"
+                        unset dir_final
+                    done
+                    echo -e " Done!\n"
+                else
+                    warn "Skipped copying the licenses, AppImage will be for personal use only."
+                fi
+            ;;
+            *'necessary'*)
+                readarray LICENSE_FILES < <(pm_licenses "${PACMAN_BOX86_LIBS[@]}")
+                printf "\nCopying the licenses..."
+                for dir in "${LICENSE_FILES[@]}"; do
+                    dir_final="$(tr -d '\n' <<<"$dir")"
+                    cp -Rdt "${HERE}/tmp/final.AppDir/usr/share/licenses/" "$dir_final"
+                    unset dir_final
+                done
+                echo -e " Done!\n"
+            ;;
+        esac
+        stty echo
+    ;;
+    1)
+        #TODO: Copy license information about the libraries.
+        echo "TODO!"
+    ;;
+    esac
+}
+package_appdir(){
     if [[ -d "${HERE}/tmp/final.AppDir" ]]; then
         cp -Rdt "${HERE}/tmp/final.AppDir" "${HERE}/base.AppDir/"*
         [[ -d "${HERE}/tmp/box86.AppDir" ]] && rm -Rf "${HERE}/tmp/box86.AppDir"
         mv "${HERE}/tmp/final.AppDir" "${HERE}/tmp/box86.AppDir"
     fi
+}
+
+package_appimage(){
+    ARCH="$ARCH" gen-appimage "${HERE}/tmp/box86.AppDir" "${OUT}/box86-${ARCH}-${platform}.AppImage"
 }
 
 # GOTO: Parse arguments.
@@ -431,8 +540,10 @@ CHROOT_DIR="${CHROOT_DIR:-${BOX86_APPIMAGE_CHROOT_DIR}}"
 CP_LIB_MODE="${CP_LIB:-${BOX86_APPIMAGE_CP_LIB}}" # nah, I'm just too lazy to change the variable name in code.
 RESET="${RESET:-${BOX86_APPIMAGE_RESET}}"
 VER="${VER:-${BOX86_APPIMAGE_VER}}"
+OUT="${OUT:-${BOX86_APPIMAGE_OUT}}"
+BUILD_METHOD="${BUILD_METHOD:-${BOX86_APPIMAGE_BUILD_METHOD}}"
 
-# Main part of the script
+# GOTO: Main part of the script
 tput smcup; clear
 get_device_info
 trap 'sleep 3s; clear; tput rmcup' EXIT
@@ -441,29 +552,37 @@ PS3_DEFAULT="$PS3"
 PS3="$(printf '\033[1mEnter number:\033[0m') "
 if [[ ! -z "$RESET" ]]; then
     case "$RESET" in
-        *"package"*) package_appimage; ARCH="$ARCH" gen-appimage "${HERE}/tmp/box86.AppDir" "${HERE}/tmp/dist/box86-${ARCH}-${platform}.AppImage" ;;
+        *"package"*) package_appdir; package_appimage;;
     esac
     exit 0
 fi
 if [[ "$(uname -m)" == "aarch64" ]]; then
-    echo -e "\e[1mWith which method would you like to use to build the BOX86 on the `uname -m` host?\e[0m"
-    select build_method in "chroot enviroment" "toolchain" "new chroot enviroment"; do
-        [[ ! -z "$build_method" ]] && break
-    done
-    if [[ ! -z "$build_method" ]]; then
+    if [[ "$BUILD_METHOD" -ge 0 ]] && [[ "$BUILD_METHOD" -lt "${#BUILD_METHOD_ARR[@]}" ]] && [ "$BUILD_METHOD" -eq "$BUILD_METHOD" ] 2>/dev/null; then
+        echo -e "\e[1mBUILD_METHOD:\e[0m ${BUILD_METHOD_ARR[${BUILD_METHOD}]}"
+        BUILD_METHOD="${BUILD_METHOD_ARR[${BUILD_METHOD}]}"
+    else
+        echo -e "\e[1mWith which method would you like to use to build the BOX86 on the `uname -m` host?\e[0m"
+        select BUILD_METHOD in "${BUILD_METHOD_ARR[@]}"; do
+            [[ ! -z "$BUILD_METHOD" ]] && break
+        done
+    fi
+    if [[ ! -z "$BUILD_METHOD" ]]; then
         check_dependencies 'git' 'arch-chroot' 'mksquashfs'
         workdirs; get_sources
         echo "Platform: \"$(tr a-z A-Z <<<"${platform}")\"."
         echo -e "CMAKE flags: ${cmake_flags[@]}\n"
-        case "$build_method" in 
+        case "$BUILD_METHOD" in 
             "chroot"*) build_chroot ;;
             #"toolchain"*) build_toolchain ;;
             "new chroot"*) make_chroot; build_chroot ;;
             *) error 1 ;;
         esac
         install_box86;
-        [[ "$ARCH" == "aarch64" ]] && install_libs
-        package_appimage; ARCH="$ARCH" gen-appimage "${HERE}/tmp/box86.AppDir" "${HERE}/tmp/dist/box86-${ARCH}-${platform}.AppImage"
+        if [[ "$ARCH" == "aarch64" ]]; then
+            install_libs
+            copy_licenses
+        fi
+        package_appdir; package_appimage
         error="$?"; [[ "$error" == 0 ]] || error 9 "packaging the box86"
         cleanup
     fi
@@ -479,5 +598,5 @@ hash -r
 trap - EXIT INT
 tput rmcup
 echo -e "\n🎉️ Successfully packaged the Appmage!"
-echo -e "(tmp/dist/box86-${ARCH}-${platform}.AppImage)\n"
+echo -e "(${OUT}/box86-${ARCH}-${platform}.AppImage)\n"
 exit 0
