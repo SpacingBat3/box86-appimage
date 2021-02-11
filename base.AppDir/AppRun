@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Archlinux-styled colored messages:
 msg_high(){
     printf "\e[1;92m==> \e[0;1m%s\e[0m\n" "$@"

@@ -264,7 +264,7 @@ get_device_info(){
     case "${BUILD_PLATFORM:-$(cat /proc/cpuinfo)}" in
         # Raspberry Pi SBCs
         *"Raspberry Pi"*)
-            pi_model="$(tr -d '\0' </proc/device-tree/model)"
+            pi_model="${BUILD_PLATFORM:-$(tr -d '\0' </proc/device-tree/model)}"
             case "$pi_model" in
                 *"Raspberry Pi 4"*) pi_ver=4 ;;
                 *"Raspberry Pi 3"*) pi_ver=3 ;;
@@ -443,7 +443,7 @@ install_libs(){
             *) error 10 ;;
         esac
         stty echo >/dev/null 2>&1
-        [[ "$error" == 0 ]] && echo -e " Done!\n" || error 9 "copying libraries from the current chroot"
+        [[ "$error" == 0 ]] && echo -e " Done!" || error 9 "copying libraries from the current chroot"
         find "${HERE}/tmp/final.AppDir/usr/lib/" -xtype l -delete
     ;;
     1)
@@ -461,7 +461,7 @@ copy_licenses(){
             *'all'*)
                 guess_pm
                 if [[ "$?" == 0 ]]; then
-                    printf "\nCopying the licenses..."
+                    printf "Copying the licenses..."
                     LICENSE_PACK="$(pm_search 'lib/')"
                     readarray LICENSE_FILES < <(pm_licenses ${LICENSE_PACK})
                     for dir in "${LICENSE_FILES[@]}"; do
@@ -477,7 +477,7 @@ copy_licenses(){
             *'.so'*)
                 guess_pm 
                 if [[ "$?" == 0 ]]; then
-                    printf "\nCopying the licenses..."
+                    printf "Copying the licenses..."
                     LICENSE_PACK="$(printf "`pm_search 'lib/.*\.so\..*'`; pm_search 'lib/.*\.so$'" | sort | uniq | tr '\n' ' ')"
                     readarray LICENSE_FILES < <(pm_licenses ${LICENSE_PACK})
                     for dir in "${LICENSE_FILES[@]}"; do
@@ -492,7 +492,7 @@ copy_licenses(){
             ;;
             *'necessary'*)
                 readarray LICENSE_FILES < <(pm_licenses "${PACMAN_BOX86_LIBS[@]}")
-                printf "\nCopying the licenses..."
+                printf "Copying the licenses..."
                 for dir in "${LICENSE_FILES[@]}"; do
                     dir_final="$(tr -d '\n' <<<"$dir")"
                     cp -Rdt "${HERE}/tmp/final.AppDir/usr/share/licenses/" "$dir_final"
@@ -523,12 +523,12 @@ package_appimage(){
 
 # GOTO: Parse arguments.
 argv=()
-for var in ${@}; do
+for var in "${@}"; do
     case "$var" in
-    -*h*|--"help") help; exit 0 ;;
+    -*h*|--"help") unset ARCH BUILD_PLATFORM; help; exit 0 ;;
     -*u*|"--usage") usage; echo; exit 0 ;;
     -*v*|"--version") version; exit 0 ;;
-    *?*"="*) declare "${var}" ;;
+    *?*"="*) declare "$var" ;;
     *) argv+=("$var") ;;
     esac
 done
