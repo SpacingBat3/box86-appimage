@@ -170,10 +170,23 @@ error_msg(){
             10)  echo "Unimplemented selection!"                                         ;;
             11)  echo "Couldn't make the chroot enviroment!"                             ;;
             12)  echo "Directory \"${2}\" already exists!"                               ;;
-            130) echo "Received INT signal!"                                            ;;
+            13)  echo "Missing chroot dependency: ${depends}!"                           ;;
+            130) echo "Received INT signal!"                                             ;;
             *) 
                  echo "Unknown error!"
                  echo "Exit code ${1}!"
+            ;;
+        esac
+        # Some additional info about the issue (in some cases):
+        case "$1" in
+            5)
+                if pacman -F "/usr/bin/${depends}" >/dev/null 2>&1; then
+                    readarray satisfy_list < <(pacman --color always -F "/usr/bin/${depends}")
+                    for each in "${satisfy_list[@]}"; do
+                        printf "\e[1;94mINFO:\e[0m ${each}"
+                    done
+                    unset each
+                fi
             ;;
         esac
         printf "\n"
@@ -344,7 +357,7 @@ build_toolchain(){
 check_dependencies(){
     if [[ "$1" == "--chroot" ]]; then
         for depends in "${@:2}"; do
-            [[ -f "${BIN32}/${depends}" ]] || error 5
+            [[ -f "${BIN32}/${depends}" ]] || error 13
         done
     else
         for depends in "${@}"; do
@@ -397,6 +410,18 @@ guess_pm(){
     return $returnvalue
 }
 
+fix_links(){
+    echo -e "\nFixing symlinks:"
+    readarray -d '' FILES < <(find "${1}/usr/lib/"*.so* -type l -print0)
+    for file in "${FILES[@]}"; do
+        real="`ls -l "$file" | grep -o " /usr/lib.*" | grep -o "/usr/lib.*"`"
+        if [[ ! -z "$real" ]]; then
+            echo "  -> `basename "$file"`"
+        fi
+    done
+    echo -e "Done!\n"
+}
+
 install_libs(){
     case "$PACKAGE_MODE" in
     0)
@@ -444,6 +469,7 @@ install_libs(){
         esac
         stty echo >/dev/null 2>&1
         [[ "$error" == 0 ]] && echo -e " Done!" || error 9 "copying libraries from the current chroot"
+        fix_links "${HERE}/tmp/final.AppDir"
         find "${HERE}/tmp/final.AppDir/usr/lib/" -xtype l -delete
     ;;
     1)
