@@ -375,7 +375,7 @@ install_box86(){
             cp -Rdt "${pkgdir}/lib/i386-linux-gnu" "${HERE}/tmp/src/box86/x86lib/"*
             chmod 755 "${pkgdir}/lib/i386-linux-gnu"
             chmod -R 644 "${pkgdir}/lib/i386-linux-gnu/"*
-            install -Dm644 "${HERE}/tmp/src/box86/LICENSE" "${pkgdir}/share/licenses/box86/LICENSE"
+            install -Dm644 "${HERE}/tmp/src/box86/docs/LICENSE" "${pkgdir}/share/licenses/box86/LICENSE"
         ;;
     esac
     
